@@ -1,0 +1,33 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <AssemblyName>VRoles</AssemblyName>
+    <Description>Allows admin commands to be assigned to groups which can be assigned to nonadmins</Description>
+    <Version>1.0.0</Version>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>VRoles</RootNamespace>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <InformationalVersion>1.0.0.0</InformationalVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Remove="LICENSE" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="LICENSE" />
+  </ItemGroup>
+  <ItemGroup>
+	<PackageReference Include="BepInEx.Unity.IL2CPP" Version="6.0.0-be.733" IncludeAssets="compile" />
+	<PackageReference Include="BepInEx.Core" Version="6.0.0-be.733" IncludeAssets="compile" />
+	<PackageReference Include="BepInEx.PluginInfoProps" Version="2.*" />
+	<PackageReference Include="VRising.Unhollowed.Client" Version="1.1.*" />
+    <PackageReference Include="VRising.VampireCommandFramework" Version="0.9.*" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Patches\" />
+  </ItemGroup>
+    <Target Name="PostBuild" AfterTargets="PostBuildEvent">
+	    <Exec Command="copy &quot;$(TargetPath)&quot; &quot;C:\Program Files (x86)\Steam\steamapps\common\VRisingDedicatedServer\BepInEx\plugins&quot; " ContinueOnError="true" />
+    </Target>
+</Project>
