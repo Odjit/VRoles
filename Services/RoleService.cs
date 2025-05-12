@@ -5,14 +5,18 @@ using System.Linq;
 using System.Reflection;
 using VampireCommandFramework;
 using VCF.Core.Basics;
+using VRoles.Commands.Converters;
 
 namespace VRoles.Services;
 class RoleService
 {
 
-    private static readonly string CONFIG_PATH = Path.Combine(BepInEx.Paths.ConfigPath, MyPluginInfo.PLUGIN_NAME);
-    private static readonly string ROLES_PATH = Path.Combine(CONFIG_PATH, "Roles");
-    private static readonly string ASSIGNED_ROLES_PATH = Path.Combine(CONFIG_PATH, "user.roles");
+    static readonly string CONFIG_PATH = Path.Combine(BepInEx.Paths.ConfigPath, MyPluginInfo.PLUGIN_NAME);
+    static readonly string ROLES_PATH = Path.Combine(CONFIG_PATH, "Roles");
+    static readonly string ASSIGNED_ROLES_PATH = Path.Combine(CONFIG_PATH, "user.roles");
+    static readonly string ALLOWED_ADMIN_COMMANDS_PATH = Path.Combine(CONFIG_PATH, "allowedAdminCommands.txt");
+    static readonly string DISALLOWED_NONADMIN_COMMANDS_PATH = Path.Combine(CONFIG_PATH, "disallowedNonadminCommands.txt");
+
 
     class RoleMiddleware : CommandMiddleware
     {
@@ -24,20 +28,23 @@ class RoleService
 
         public override bool CanExecute(ICommandContext ctx, CommandAttribute command, MethodInfo method)
         {
-            if (ctx.IsAdmin || !command.AdminOnly) return true;
+            if (ctx.IsAdmin) return true;
 
             var chatCtx = (ChatCommandContext)ctx;
-            if (!roleService.assignedRoles.TryGetValue(chatCtx.User.PlatformId, out var roles)) return false;
-
             var commandName = GetCommandName(command, method);
+            if (!roleService.assignedRoles.TryGetValue(chatCtx.User.PlatformId, out var roles))
+                return (!command.AdminOnly || roleService.allowedAdminCommands.Contains(commandName)) && !roleService.disallowedNonadminCommands.Contains(commandName);
 
-            return roles.Any(r => roleService.rolesToCommands[r].Contains(commandName));
+            return (!command.AdminOnly && !roleService.disallowedNonadminCommands.Contains(commandName)) ||
+                    roles.Any(r => roleService.rolesToCommands[r].Contains(commandName));
         }
     }
 
 
     Dictionary<string, HashSet<string>> rolesToCommands = [];
     Dictionary<ulong, List<string>> assignedRoles = [];
+    HashSet<string> allowedAdminCommands = [];
+    HashSet<string> disallowedNonadminCommands = [];
 
     static string GetCommandName(CommandAttribute command, MethodInfo method)
     {
@@ -134,6 +141,46 @@ class RoleService
                 Console.WriteLine($"Error loading role assignments: {ex.Message}");
             }
         }
+
+        // Load allowed admin commands
+        if (File.Exists(ALLOWED_ADMIN_COMMANDS_PATH))
+        {
+            try
+            {
+                var lines = File.ReadAllLines(ALLOWED_ADMIN_COMMANDS_PATH);
+                foreach (var line in lines)
+                {
+                    if (!string.IsNullOrWhiteSpace(line))
+                    {
+                        allowedAdminCommands.Add(line.Trim());
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error loading allowed admin commands: {ex.Message}");
+            }
+        }
+
+        // Load disallowed non-admin commands
+        if (File.Exists(DISALLOWED_NONADMIN_COMMANDS_PATH))
+        {
+            try
+            {
+                var lines = File.ReadAllLines(DISALLOWED_NONADMIN_COMMANDS_PATH);
+                foreach (var line in lines)
+                {
+                    if (!string.IsNullOrWhiteSpace(line))
+                    {
+                        disallowedNonadminCommands.Add(line.Trim());
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error loading disallowed non-admin commands: {ex.Message}");
+            }
+        }
     }
 
     void SaveRoleAssignments()
@@ -150,6 +197,22 @@ class RoleService
             Directory.CreateDirectory(ROLES_PATH);
         File.WriteAllText(Path.Join(ROLES_PATH, roleName + ".txt"),
             String.Join("\n", rolesToCommands[roleName].OrderBy(c => c)));
+    }
+
+    void SaveAllowedAdminCommands()
+    {
+        if (!Directory.Exists(CONFIG_PATH))
+            Directory.CreateDirectory(CONFIG_PATH);
+        File.WriteAllText(ALLOWED_ADMIN_COMMANDS_PATH,
+            String.Join("\n", allowedAdminCommands.OrderBy(c => c)));
+    }
+
+    void SaveDisallowedNonAdminCommands()
+    {
+        if (!Directory.Exists(CONFIG_PATH))
+            Directory.CreateDirectory(CONFIG_PATH);
+        File.WriteAllText(DISALLOWED_NONADMIN_COMMANDS_PATH,
+            String.Join("\n", disallowedNonadminCommands.OrderBy(c => c)));
     }
 
     public string MatchRole(string roleName)
@@ -204,6 +267,44 @@ class RoleService
     public IEnumerable<string> GetCommandsForRole(string roleName)
     {
         return rolesToCommands[roleName];
+    }
+
+    public void AllowCommand(FoundCommand command)
+    {
+        if (command.adminOnly)
+        {
+            allowedAdminCommands.Add(command.Name);
+            SaveAllowedAdminCommands();
+        }
+        else
+        {
+            disallowedNonadminCommands.Remove(command.Name);
+            SaveDisallowedNonAdminCommands();
+        }
+    }
+
+    public void DisallowCommand(FoundCommand command)
+    {
+        if (command.adminOnly)
+        {
+            allowedAdminCommands.Remove(command.Name);
+            SaveAllowedAdminCommands();
+        }
+        else
+        {
+            disallowedNonadminCommands.Add(command.Name);
+            SaveDisallowedNonAdminCommands();
+        }
+    }
+
+    public IEnumerable<string> GetAllowedAdminCommands()
+    {
+        return allowedAdminCommands;
+    }
+
+    public IEnumerable<string> GetDisallowedNonAdminCommands()
+    {
+        return disallowedNonadminCommands;
     }
 
     public void AssignCommandToRole(string roleName, string commandName)

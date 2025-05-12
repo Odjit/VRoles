@@ -55,13 +55,23 @@ class RoleCommands
     public static void ListMyRoles(ChatCommandContext ctx)
     { 
         ctx.Reply($"Your roles are:" + String.Join(", ", Core.RoleService.GetRoles(ctx.User.PlatformId).OrderByDescending(r => r).Select(x => x.Role()))); 
-    }   
+    }
 
     [Command("listcommands", shortHand: "lc")]
-    public static void ListCommands(ChatCommandContext ctx, FoundRole role)
+    public static void ListCommands(ChatCommandContext ctx, FoundRole role = null)
     {
-        ctx.PaginatedReply($"Commands in the role {role.Formatted}\n" +
-                           String.Join("\n", Core.RoleService.GetCommandsForRole(role.Name).OrderBy(c => c).Select(c => c.Command())));
+        if (role != null)
+        {
+            ctx.PaginatedReply($"Commands in the role {role.Formatted}\n" +
+                               String.Join("\n", Core.RoleService.GetCommandsForRole(role.Name).OrderBy(c => c).Select(c => c.Command())));
+        }
+        else
+        {
+            ctx.PaginatedReply("Commands available to everyone:\n" +
+                               String.Join("\n", Core.RoleService.GetAllowedAdminCommands().OrderBy(c => c).Select(c => c.Command())));
+            ctx.PaginatedReply("Commands disallowed to nonadmins or roles granting it:\n" +
+                               String.Join("\n", Core.RoleService.GetDisallowedNonAdminCommands().OrderBy(c => c).Select(c => c.Command())));
+        }
     }
 
     [Command("add", adminOnly: true)]
@@ -91,23 +101,39 @@ class RoleCommands
     }
 
     [Command("allow", adminOnly: true)]
-    public static void AddCommandToRole(ChatCommandContext ctx, FoundRole role, FoundCommand command)
+    public static void AddCommandToRole(ChatCommandContext ctx, FoundCommand command, FoundRole role=null)
     {
-        Core.RoleService.AssignCommandToRole(role.Name, command.Name);
-        ctx.Reply($"Command {command.Formatted} added to role {role.Formatted}.");
-    }
-
-    [Command("disallow", adminOnly: true)]
-    public static void RemoveCommandFromRole(ChatCommandContext ctx, FoundRole role, FoundCommand command)
-    {
-        if (Core.RoleService.RemoveCommandFromRole(role.Name, command.Name))
+        if (role == null)
         {
-            ctx.Reply($"Removed {command.Formatted} from role {role.Formatted}");
-            return;
+            Core.RoleService.AllowCommand(command);
+            ctx.Reply($"Command {command.Formatted} added to everyone.");
         }
         else
         {
-            ctx.Reply($"Command {command.Formatted} not found in role {role.Formatted}.");
+            Core.RoleService.AssignCommandToRole(role.Name, command.Name);
+            ctx.Reply($"Command {command.Formatted} added to role {role.Formatted}.");
+        }
+    }
+
+    [Command("disallow", adminOnly: true)]
+    public static void RemoveCommandFromRole(ChatCommandContext ctx, FoundCommand command, FoundRole role=null)
+    {
+        if (role == null)
+        {
+            Core.RoleService.DisallowCommand(command);
+            ctx.Reply($"Command {command.Formatted} removed from everyone who isn't admin or has it via a role.");
+        }
+        else
+        {
+            if (Core.RoleService.RemoveCommandFromRole(role.Name, command.Name))
+            {
+                ctx.Reply($"Removed {command.Formatted} from role {role.Formatted}");
+                return;
+            }
+            else
+            {
+                ctx.Reply($"Command {command.Formatted} not found in role {role.Formatted}.");
+            }
         }
     }
 }

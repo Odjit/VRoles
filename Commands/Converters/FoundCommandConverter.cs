@@ -5,7 +5,7 @@ using VampireCommandFramework;
 
 namespace VRoles.Commands.Converters;
 
-public record FoundCommand(string Name)
+public record FoundCommand(string Name, bool adminOnly)
 {
     public string Formatted => Name.Command();
 }
@@ -14,15 +14,15 @@ internal class FoundCommandConverter : CommandArgumentConverter<FoundCommand>
 {
     public override FoundCommand Parse(ICommandContext ctx, string input)
     {
-        var cmd = FindCommandByName(input);
+        var (cmd, adminOnly) = FindCommandByName(input);
 
         if (cmd == null) throw ctx.Error($"Command {input.Command()} not found.");
 
-        return new FoundCommand(cmd);
+        return new FoundCommand(cmd, adminOnly);
     }
 
 
-    static string FindCommandByName(string commandName)
+    static (string, bool) FindCommandByName(string commandName)
     {
         // Parse the input - handle both formats: "CommandName" and "Group.CommandName" and "Assembly.Group.CommandName"
         var parts = commandName.Split('.');
@@ -56,7 +56,7 @@ internal class FoundCommandConverter : CommandArgumentConverter<FoundCommand>
 
         if (assemblyMapField == null)
         {
-            return null; // Can't find the field
+            return (null, false); // Can't find the field
         }
 
         var assemblyMap = assemblyMapField.GetValue(null);
@@ -123,9 +123,11 @@ internal class FoundCommandConverter : CommandArgumentConverter<FoundCommand>
                 var commandAttrType = commandAttr.GetType();
                 var nameProperty = commandAttrType.GetProperty("Name");
                 var shortHandProperty = commandAttrType.GetProperty("ShortHand");
+                var adminOnlyProperty = commandAttrType.GetProperty("AdminOnly");
 
                 var extractedCommandName = (string)nameProperty.GetValue(commandAttr);
                 var commandShortHand = (string)shortHandProperty.GetValue(commandAttr);
+                var adminOnly = (bool)adminOnlyProperty.GetValue(commandAttr);
 
                 string groupName = null;
                 string groupShortHand = null;
@@ -178,11 +180,11 @@ internal class FoundCommandConverter : CommandArgumentConverter<FoundCommand>
                     }
 
                     properName += "." + extractedCommandName;
-                    return properName;
+                    return (properName, adminOnly);
                 }
             }
         }
 
-        return null; // No match found
+        return (null, false); // No match found
     }
 }
