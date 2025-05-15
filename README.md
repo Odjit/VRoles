@@ -21,21 +21,23 @@ Feel free to reach out to me on discord (odjit) if you have any questions or nee
   - Lists all roles and which users are assigned to each. **Admin only.**
 - `.role list (player)`
   - Lists all roles assigned to a specific player. **Admin only.**
-- `.role listcommands (role)` or `.role lc (role)`
+- `.role mine`
+  - List your roles.
+- `.role listcommands [role]` or `.role lc [role]`
   - Lists all commands allowed by the specified role.
+  - If no role is specified, shows commands available to everyone and commands disallowed to non-admins.
 - `.role add (player) (role)`
   - Assigns a role to a player. Will notify if the player already has the role. **Admin only.**
 - `.role remove (player) (role)`
   - Removes a role from a player. Will notify if the role wasn't assigned. **Admin only.**
-- `.role allow (role) (command)`
+- `.role allow (command) [role]`
   - Adds permission for a command to a role. **Admin only.**
+  - If no role is specified, allows the command for everyone.
   - Add a subgroup command by joining with a `.` For example: To add `.clan kick` to a role, input `clan.kick`
   - If a command is used by more than one, it will add the first it finds, or you can specify by adding the mod name first. For example: `kindredcommands.give`
-- `.role disallow (role) (command)`
+- `.role disallow (command) [role]`
   - Removes a command from a role's permissions. **Admin only.**
-- `.role mine`
-  - List your rolls.
-
+  - If no role is specified, disallows the command for everyone who isn't admin or doesn't have it via a role.
 	
 ## Eventual To-Do/Possible features
 - Come find out in the V Rising Modding Discord!
