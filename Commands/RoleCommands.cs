@@ -1,5 +1,8 @@
-﻿using System;
+﻿using ProjectM;
+using System;
+using System.IO;
 using System.Linq;
+using Unity.Collections;
 using VampireCommandFramework;
 using VRoles.Commands.Converters;
 
@@ -11,13 +14,14 @@ class RoleCommands
     [Command("create", adminOnly: true)]
     public static void CreateRole(ChatCommandContext ctx, string role)
     {
-        if (Core.RoleService.CreateRole(role))
+        string sanitizedRoleName = string.Join("_", role.Split(Path.GetInvalidFileNameChars()));
+        if (Core.RoleService.CreateRole(sanitizedRoleName))
         {
-            ctx.Reply($"Role {role.Role()} created.");
+            ctx.Reply($"Role {sanitizedRoleName.Role()} created.");
         }
         else
         {
-            ctx.Reply($"Role {role.Role()} already exists.");
+            ctx.Reply($"Role {sanitizedRoleName.Role()} already exists.");
         }
     }
 
@@ -49,8 +53,16 @@ class RoleCommands
 
     [Command("mine")]
     public static void ListMyRoles(ChatCommandContext ctx)
-    { 
-        ctx.Reply($"Your roles are:" + String.Join(", ", Core.RoleService.GetRoles(ctx.User.PlatformId).OrderByDescending(r => r).Select(x => x.Role()))); 
+    {
+        var roles = Core.RoleService.GetRoles(ctx.User.PlatformId);
+        if (roles.Any())
+        {
+            ctx.Reply($"Your roles are:" + String.Join(", ", roles.OrderByDescending(r => r).Select(x => x.Role())));
+        }
+        else
+        {
+            ctx.Reply("You have not been assigned any roles.");
+        }
     }
 
     [Command("listcommands", shortHand: "lc")]
@@ -76,6 +88,11 @@ class RoleCommands
         if (Core.RoleService.AssignRoleToPlatformId(role.Name, player.User.PlatformId))
         {
             ctx.Reply($"Role {role.Formatted} assigned to {player.Formatted}.");
+            if (player.User.PlatformId != ctx.User.PlatformId)
+            {
+                var message = new FixedString512Bytes($"You have been assigned the role {role.Formatted}.");
+                ServerChatUtils.SendSystemMessageToClient(Core.EntityManager, player.User, ref message);
+            }
         }
         else
         {
@@ -89,6 +106,12 @@ class RoleCommands
         if (Core.RoleService.RemoveRoleFromPlatformId(role.Name, player.User.PlatformId))
         {
             ctx.Reply($"Role {role.Formatted} removed from {player.Formatted}.");
+
+            if (player.User.PlatformId != ctx.User.PlatformId)
+            {
+                var message = new FixedString512Bytes($"You have had the role {role.Formatted} removed.");
+                ServerChatUtils.SendSystemMessageToClient(Core.EntityManager, player.User, ref message);
+            }
         }
         else
         {

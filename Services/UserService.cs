@@ -55,6 +55,7 @@ class UserService
         {
             var user = entity.Read<User>();
             if (user.LocalCharacter.GetEntityOnServer() == Entity.Null) continue;
+            if (user.PlatformId == 0) continue;
             var name = user.LocalCharacter.GetEntityOnServer().Read<PlayerCharacter>().Name;
             playerNameToUserEntityCache.Add(name.Value, entity);
             platformIdToUserEntityCache.Add(user.PlatformId, entity);

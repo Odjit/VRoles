@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using Unity.Entities.UniversalDelegates;
 using VampireCommandFramework;
 using VCF.Core.Basics;
 using VRoles.Commands.Converters;
@@ -32,16 +33,19 @@ class RoleService
 
             var chatCtx = (ChatCommandContext)ctx;
             var commandName = GetCommandName(command, method);
-            if (!roleService.assignedRoles.TryGetValue(chatCtx.User.PlatformId, out var roles))
-                return (!command.AdminOnly || roleService.allowedAdminCommands.Contains(commandName)) && !roleService.disallowedNonadminCommands.Contains(commandName);
 
-            return (!command.AdminOnly && !roleService.disallowedNonadminCommands.Contains(commandName)) ||
-                    roles.Any(r => roleService.rolesToCommands[r].Contains(commandName));
+            if (roleService.allowedAdminCommands.Contains(commandName)) return true;
+
+            if (roleService.assignedRoles.TryGetValue(chatCtx.User.PlatformId, out var roles) &&
+                roles.Any(r => roleService.rolesToCommands[r].Contains(commandName)))
+                return true;
+
+            return !command.AdminOnly && !roleService.disallowedNonadminCommands.Contains(commandName);
         }
     }
 
 
-    Dictionary<string, HashSet<string>> rolesToCommands = [];
+    Dictionary<string, HashSet<string>> rolesToCommands = new Dictionary<string, HashSet<string>>(StringComparer.InvariantCultureIgnoreCase);
     Dictionary<ulong, List<string>> assignedRoles = [];
     HashSet<string> allowedAdminCommands = [];
     HashSet<string> disallowedNonadminCommands = [];

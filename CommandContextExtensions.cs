@@ -35,7 +35,7 @@ static class CommandContextExtensions
     {
         var pages = new List<string>();
         var page = new StringBuilder();
-        var rawLines = rawText.Split(Environment.NewLine); // todo: does this work on both platofrms?
+        var rawLines = rawText.Split("\n"); // todo: does this work on both platofrms?
         var lines = new List<string>();
 
         // process rawLines -> lines of length <= pageSize
@@ -49,7 +49,7 @@ static class CommandContextExtensions
                 {
                     // find the last space before the page size within 5% of pageSize buffer
                     var splitIndex = remaining.LastIndexOf(' ', pageSize - (int)(pageSize * 0.05));
-                    if (splitIndex < 0)
+                    if (splitIndex <= 0)
                     {
                         splitIndex = Math.Min(pageSize - 1, remaining.Length);
                     }
