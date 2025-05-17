@@ -42,4 +42,7 @@ Feel free to reach out to me on discord (odjit) if you have any questions or nee
 ## Eventual To-Do/Possible features
 - Come find out in the V Rising Modding Discord!
 
+## Credits
+- As always, thanks to [Deca](https://github.com/decaprime/) for [VampireCommandFramework](https://github.com/decaprime/VampireCommandFramework). Additionally for use of his CommandContextExtensions and formatting.
+
 This mod is licensed under the AGPL-3.0 license.
