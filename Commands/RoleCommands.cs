@@ -11,7 +11,7 @@ namespace VRoles.Commands;
 [CommandGroup("role")]
 class RoleCommands
 {
-    [Command("create", adminOnly: true)]
+    [Command("create", shortHand: "c", adminOnly: true)]
     public static void CreateRole(ChatCommandContext ctx, string role)
     {
         string sanitizedRoleName = string.Join("_", role.Split(Path.GetInvalidFileNameChars()));
@@ -25,7 +25,7 @@ class RoleCommands
         }
     }
 
-    [Command("delete", adminOnly: true)]
+    [Command("delete", shortHand: "d", adminOnly: true)]
     public static void DeleteRole(ChatCommandContext ctx, FoundRole role)
     {
         if (Core.RoleService.DeleteRole(role.Name))
@@ -38,20 +38,20 @@ class RoleCommands
         }
     }
 
-    [Command("list", adminOnly: true)]
+    [Command("list", shortHand: "l", adminOnly: true)]
     public static void ListRoles(ChatCommandContext ctx)
     {
         ctx.PaginatedReply("Roles:\n" + String.Join("\n", Core.RoleService.GetRoles().OrderBy(r => r)
             .Select(x => x.Role() + ": " + String.Join(", ", Core.RoleService.GetPlayersWithRole(x).OrderBy(u => u).Select(u => u.User())))));
     }
 
-    [Command("list", adminOnly: true)]
+    [Command("list", shortHand: "l", adminOnly: true)]
     public static void ListRoles(ChatCommandContext ctx, FoundUser player)
     {
         ctx.Reply($"Roles assigned to {player.Formatted}: " + String.Join(", ", Core.RoleService.GetRoles(player.User.PlatformId).OrderBy(r => r).Select(r => r.Role())));
     }
 
-    [Command("mine")]
+    [Command("mine", shortHand: "my")]
     public static void ListMyRoles(ChatCommandContext ctx)
     {
         var roles = Core.RoleService.GetRoles(ctx.User.PlatformId);
@@ -82,7 +82,7 @@ class RoleCommands
         }
     }
 
-    [Command("add", adminOnly: true)]
+    [Command("add", shortHand: "a", adminOnly: true)]
     public static void AssignRole(ChatCommandContext ctx, FoundUser player, FoundRole role)
     {
         if (Core.RoleService.AssignRoleToPlatformId(role.Name, player.User.PlatformId))
@@ -100,7 +100,7 @@ class RoleCommands
         }
     }
 
-    [Command("remove", adminOnly: true)]
+    [Command("remove", shortHand: "r", adminOnly: true)]
     public static void RemoveRole(ChatCommandContext ctx, FoundUser player, FoundRole role)
     {
         if (Core.RoleService.RemoveRoleFromPlatformId(role.Name, player.User.PlatformId))
@@ -119,8 +119,8 @@ class RoleCommands
         }
     }
 
-    [Command("allow", adminOnly: true)]
-    public static void AddCommandToRole(ChatCommandContext ctx, FoundCommand command, FoundRole role=null)
+    [Command("allow", shortHand: "ac", adminOnly: true)]
+    public static void AddCommandToRole(ChatCommandContext ctx, FoundCommand command, FoundRole role = null)
     {
         if (role == null)
         {
@@ -134,8 +134,8 @@ class RoleCommands
         }
     }
 
-    [Command("disallow", adminOnly: true)]
-    public static void RemoveCommandFromRole(ChatCommandContext ctx, FoundCommand command, FoundRole role=null)
+    [Command("disallow", shortHand: "dc", adminOnly: true)]
+    public static void RemoveCommandFromRole(ChatCommandContext ctx, FoundCommand command, FoundRole role = null)
     {
         if (role == null)
         {
@@ -156,7 +156,7 @@ class RoleCommands
         }
     }
 
-    [Command("allowgroup", adminOnly: true)]
+    [Command("allowgroup", shortHand: "ag", adminOnly: true)]
     public static void AllowGroup(ChatCommandContext ctx, FoundGroup group, FoundRole role = null)
     {
         foreach (var command in group.Commands)
@@ -173,7 +173,7 @@ class RoleCommands
         ctx.Reply($"Allowed all commands in group {group.Formatted}{(role != null ? $" for role {role.Formatted}" : " for everyone")}.");
     }
 
-    [Command("disallowgroup", adminOnly: true)]
+    [Command("disallowgroup", shortHand: "dg", adminOnly: true)]
     public static void DisallowGroup(ChatCommandContext ctx, FoundGroup group, FoundRole role = null)
     {
         foreach (var command in group.Commands)
