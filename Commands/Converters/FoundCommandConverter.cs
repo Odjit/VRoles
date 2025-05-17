@@ -84,7 +84,7 @@ internal class FoundCommandConverter : CommandArgumentConverter<FoundCommand>
 
             // Check if assembly name matches if specified
             if (inputAssembly != null &&
-                !assemblyName.Equals(inputAssembly, StringComparison.OrdinalIgnoreCase))
+                !assemblyName.Equals(inputAssembly, StringComparison.InvariantCultureIgnoreCase))
             {
                 continue;
             }
@@ -146,10 +146,10 @@ internal class FoundCommandConverter : CommandArgumentConverter<FoundCommand>
                 var matches = false;
 
                 // Case 1: Command only
-                if ((inputGroup == null || assemblyName.Equals(inputGroup, StringComparison.OrdinalIgnoreCase)) && groupName == null)
+                if ((inputGroup == null || assemblyName.Equals(inputGroup, StringComparison.InvariantCultureIgnoreCase)) && groupName == null)
                 {
-                    if (inputCommand.Equals(extractedCommandName, StringComparison.OrdinalIgnoreCase) ||
-                        (commandShortHand != null && inputCommand.Equals(commandShortHand, StringComparison.OrdinalIgnoreCase)))
+                    if (inputCommand.Equals(extractedCommandName, StringComparison.InvariantCultureIgnoreCase) ||
+                        (commandShortHand != null && inputCommand.Equals(commandShortHand, StringComparison.InvariantCulture    )))
                     {
                         matches = true;
                     }
@@ -157,11 +157,11 @@ internal class FoundCommandConverter : CommandArgumentConverter<FoundCommand>
                 // Case 2: Group and Command
                 else if (inputGroup != null && groupName != null)
                 {
-                    var groupMatches = inputGroup.Equals(groupName, StringComparison.OrdinalIgnoreCase) ||
-                                        (groupShortHand != null && inputGroup.Equals(groupShortHand, StringComparison.OrdinalIgnoreCase));
+                    var groupMatches = inputGroup.Equals(groupName, StringComparison.InvariantCultureIgnoreCase) ||
+                                        (groupShortHand != null && inputGroup.Equals(groupShortHand, StringComparison.InvariantCultureIgnoreCase));
 
-                    var cmdMatches = inputCommand.Equals(extractedCommandName, StringComparison.OrdinalIgnoreCase) ||
-                                      (commandShortHand != null && inputCommand.Equals(commandShortHand, StringComparison.OrdinalIgnoreCase));
+                    var cmdMatches = inputCommand.Equals(extractedCommandName, StringComparison.InvariantCultureIgnoreCase) ||
+                                      (commandShortHand != null && inputCommand.Equals(commandShortHand, StringComparison.InvariantCultureIgnoreCase));
 
                     if (groupMatches && cmdMatches)
                     {

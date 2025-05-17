@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using Unity.Entities.UniversalDelegates;
 using VampireCommandFramework;
 using VCF.Core.Basics;
 using VRoles.Commands.Converters;
@@ -282,8 +281,8 @@ class RoleService
         }
         else
         {
-            disallowedNonadminCommands.Remove(command.Name);
-            SaveDisallowedNonAdminCommands();
+            if(disallowedNonadminCommands.Remove(command.Name))
+                SaveDisallowedNonAdminCommands();
         }
     }
 
@@ -291,8 +290,8 @@ class RoleService
     {
         if (command.adminOnly)
         {
-            allowedAdminCommands.Remove(command.Name);
-            SaveAllowedAdminCommands();
+            if (allowedAdminCommands.Remove(command.Name))
+                SaveAllowedAdminCommands();
         }
         else
         {
