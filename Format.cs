@@ -23,6 +23,7 @@ public static class Format
 	public static string Large(this string input) => Size(input, 24);
 
     public static string Command(this string input) => Bold(input).Color(VRoles.Color.Command);
+    public static string Group(this string input) => Bold(input).Color(VRoles.Color.Group);
     public static string Role(this string input) => Bold(input).Color(VRoles.Color.DarkGreen);
     public static string User(this string input) => Bold(input).Color(VRoles.Color.Orange);
 

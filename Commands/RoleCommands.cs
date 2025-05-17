@@ -155,4 +155,38 @@ class RoleCommands
             }
         }
     }
+
+    [Command("allowgroup", adminOnly: true)]
+    public static void AllowGroup(ChatCommandContext ctx, FoundGroup group, FoundRole role = null)
+    {
+        foreach (var command in group.Commands)
+        {
+            if (role == null)
+            {
+                Core.RoleService.AllowCommand(command);
+            }
+            else
+            {
+                Core.RoleService.AssignCommandToRole(role.Name, command.Name);
+            }
+        }
+        ctx.Reply($"Allowed all commands in group {group.Formatted}{(role != null ? $" for role {role.Formatted}" : " for everyone")}.");
+    }
+
+    [Command("disallowgroup", adminOnly: true)]
+    public static void DisallowGroup(ChatCommandContext ctx, FoundGroup group, FoundRole role = null)
+    {
+        foreach (var command in group.Commands)
+        {
+            if (role == null)
+            {
+                Core.RoleService.DisallowCommand(command);
+            }
+            else
+            {
+                Core.RoleService.RemoveCommandFromRole(role.Name, command.Name);
+            }
+        }
+        ctx.Reply($"Disallowed all commands in group {group.Formatted}{(role != null ? $" for role {role.Formatted}" : " for everyone")}.");
+    }
 }
