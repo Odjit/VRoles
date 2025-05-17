@@ -14,7 +14,13 @@ internal class FoundUserConverter : CommandArgumentConverter<FoundUser>
     {
         var user = Core.UserService.GetUser(input);
 
-        if (user == User.Empty) throw ctx.Error($"Player {input.User()} not found.");
+        if (user == User.Empty)
+        {
+            var unboundName = Core.UserService.UnboundPlayerName(input);
+            if (unboundName == null)
+                throw ctx.Error($"Player {input.User()} not found.");
+            throw ctx.Error($"Player {unboundName.User()} is unbound.");
+        }
 
         return new FoundUser(user.CharacterName.Value, user);
     }
