@@ -419,6 +419,13 @@ class RoleService
     static void HookUpForSeeingIfCheckingPermission()
     {
         var executeCommandWithArgsMethod = AccessTools.Method(typeof(CommandRegistry), "ExecuteCommandWithArgs");
+        if (executeCommandWithArgsMethod == null)
+        {
+            // PreCommand Overloading changes in VCF
+            inExecuteCommandWithArgs = true;
+            return;
+        }
+
         var prefixExecute = new HarmonyMethod(typeof(RoleService), nameof(EnterExecuteCommandWithArgs));
         var postfixExecute = new HarmonyMethod(typeof(RoleService), nameof(ExitExecuteCommandWithArgs));
         Plugin.Harmony.Patch(executeCommandWithArgsMethod, prefix: prefixExecute, postfix: postfixExecute);
