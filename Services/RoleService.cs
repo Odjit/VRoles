@@ -1,4 +1,5 @@
-﻿using System;
+﻿using HarmonyLib;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -28,18 +29,49 @@ class RoleService
 
         public override bool CanExecute(ICommandContext ctx, CommandAttribute command, MethodInfo method)
         {
-            if (ctx.IsAdmin) return true;
-
             var chatCtx = (ChatCommandContext)ctx;
             var commandName = GetCommandName(command, method);
 
-            if (roleService.allowedAdminCommands.Contains(commandName)) return true;
+            if (ctx.IsAdmin)
+            {
+                if (RoleService.InExecute && command.AdminOnly)
+                    Core.Log.LogInfo($"{chatCtx.Event.User.CharacterName}({chatCtx.Event.User.PlatformId}) is admin, skipping role check");
+                return true;
+            }
+
+            if (roleService.allowedAdminCommands.Contains(commandName))
+            {
+                if (RoleService.InExecute)
+                    Core.Log.LogInfo($"{chatCtx.Event.User.CharacterName}({chatCtx.Event.User.PlatformId}) is allowed to use {commandName} as everyone is allowed to use this admin command");
+                return true;
+            }
 
             if (roleService.assignedRoles.TryGetValue(chatCtx.User.PlatformId, out var roles) &&
                 roles.Any(r => roleService.rolesToCommands[r].Contains(commandName)))
+            {
+                if (RoleService.InExecute)
+                {
+                    var allowedRoles = roles.Where(r => roleService.rolesToCommands[r].Contains(commandName));
+                    Core.Log.LogInfo($"{chatCtx.Event.User.CharacterName}({chatCtx.Event.User.PlatformId}) is allowed to use {commandName} as they have the roles {string.Join(", ", allowedRoles)} that allow it");
+                }
                 return true;
+            }
 
-            return !command.AdminOnly && !roleService.disallowedNonadminCommands.Contains(commandName);
+            if (command.AdminOnly)
+            {
+                if (RoleService.InExecute)
+                    Core.Log.LogInfo($"{chatCtx.Event.User.CharacterName}({chatCtx.Event.User.PlatformId}) is not allowed to use {commandName} as it is admin only");
+                return false;
+            }
+
+            if (roleService.disallowedNonadminCommands.Contains(commandName))
+            {
+                if (RoleService.InExecute)
+                    Core.Log.LogInfo($"{chatCtx.Event.User.CharacterName}({chatCtx.Event.User.PlatformId}) is not allowed to use {commandName} as it is disallowed for nonadmins");
+                return false;
+            }
+
+            return true;
         }
     }
 
@@ -76,6 +108,8 @@ class RoleService
 
         var roleMiddleware = new RoleMiddleware(this);
         CommandRegistry.Middlewares.Add(roleMiddleware);
+
+        HookUpForSeeingIfCheckingPermission();
 
         LoadSettings();
     }
@@ -357,5 +391,95 @@ class RoleService
         var result = roles.Remove(roleName);
         if (result) SaveRoleAssignments();
         return result;
+    }
+
+    static bool inExecuteCommandWithArgs = false;
+    static bool inHelpCmd = false;
+    internal static bool InExecute => inExecuteCommandWithArgs && !inHelpCmd;
+
+    static void EnterExecuteCommandWithArgs()
+    {
+        inExecuteCommandWithArgs = true;
+    }
+
+    static void ExitExecuteCommandWithArgs()
+    {
+        inExecuteCommandWithArgs = false;
+    }
+
+    static void EnterHelpCommand()
+    {
+        inHelpCmd = true;
+    }
+
+    static void ExitHelpCommand()
+    {
+        inHelpCmd = false;
+    }
+    static void HookUpForSeeingIfCheckingPermission()
+    {
+        var executeCommandWithArgsMethod = AccessTools.Method(typeof(CommandRegistry), "ExecuteCommandWithArgs");
+        var prefixExecute = new HarmonyMethod(typeof(RoleService), nameof(EnterExecuteCommandWithArgs));
+        var postfixExecute = new HarmonyMethod(typeof(RoleService), nameof(ExitExecuteCommandWithArgs));
+        Plugin.Harmony.Patch(executeCommandWithArgsMethod, prefix: prefixExecute, postfix: postfixExecute);
+
+        var prefixHelp = new HarmonyMethod(typeof(RoleService), nameof(EnterHelpCommand));
+        var postfixHelp = new HarmonyMethod(typeof(RoleService), nameof(ExitHelpCommand));
+
+        // Use reflection to get the internal static property AssemblyCommandMap
+        var assemblyCommandMapProp = typeof(CommandRegistry).GetProperty(
+            "AssemblyCommandMap",
+            BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+
+        if (assemblyCommandMapProp == null)
+            return;
+
+        var assemblyCommandMap = assemblyCommandMapProp.GetValue(null) as System.Collections.IDictionary;
+        if (assemblyCommandMap == null)
+            return;
+
+        foreach (System.Collections.DictionaryEntry asmEntry in assemblyCommandMap)
+        {
+            // Only process the VampireCommandFramework assembly
+            if (asmEntry.Key is Assembly asm && asm.GetName().Name == "VampireCommandFramework")
+            {
+                var commandDict = asmEntry.Value as System.Collections.IDictionary;
+                if (commandDict == null)
+                    continue;
+
+                foreach (System.Collections.DictionaryEntry cmdEntry in commandDict)
+                {
+                    var metadata = cmdEntry.Key;
+                    var commandList = cmdEntry.Value as System.Collections.IEnumerable;
+                    if (commandList == null)
+                        continue;
+
+                    // Check if any command string is ".help" or ".help-all"
+                    bool isHelp = false;
+                    foreach (var cmd in commandList)
+                    {
+                        if (cmd is string s && (s == ".help" || s == ".help-all"))
+                        {
+                            isHelp = true;
+                            break;
+                        }
+                    }
+                    if (!isHelp)
+                        continue;
+
+                    // Get the MethodInfo from the metadata (reflection, since it's an internal record)
+                    var methodProp = metadata.GetType().GetProperty("Method");
+                    if (methodProp == null)
+                        continue;
+
+                    var methodInfo = methodProp.GetValue(metadata) as MethodInfo;
+                    if (methodInfo == null)
+                        continue;
+
+                    // Patch the help command method
+                    Plugin.Harmony.Patch(methodInfo, prefix: prefixHelp, postfix: postfixHelp);
+                }
+            }
+        }
     }
 }
