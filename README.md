@@ -1,7 +1,6 @@
 ![](logo.png)
 # V Roles for V Rising
 V Roles is a permissions mod for V Rising. It allows you to create roles and assign commands for permitted use per role.
-   - **Note:** Until BepInEx is updated for 1.1, please do not use the thunderstore version. Get the correct testing version https://wiki.vrisingmods.com/user/game_update.html.
 
 ---
 
