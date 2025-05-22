@@ -422,7 +422,7 @@ class RoleService
         if (executeCommandWithArgsMethod == null)
         {
             // PreCommand Overloading changes in VCF
-            inExecuteCommandWithArgs = true;
+            executeCommandWithArgsMethod = AccessTools.Method(typeof(CommandRegistry), "Handle");
             return;
         }
 
