@@ -2,6 +2,8 @@
 # V Roles for V Rising
 V Roles is a permissions mod for V Rising. It allows you to create roles and assign commands for permitted use per role.
 
+*Define who commands, and who obeys.*
+
 ---
 
 Thanks to the V Rising modding and server communities for ideas and requests!
