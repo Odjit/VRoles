@@ -32,7 +32,8 @@ internal static class Core
 	internal static void InitializeAfterLoaded()
 	{
 		if (_hasInitialized) return;
-        RoleService = new RoleService();
+        RoleService = VRoles.Services.RoleService.Instance;
+        VRoles.Services.RoleService.EnsureRolesLoaded();
 
         _hasInitialized = true;
 		Log.LogInfo($"VRoles initialized");

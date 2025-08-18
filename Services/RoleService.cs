@@ -9,8 +9,17 @@ using VCF.Core.Basics;
 using VRoles.Commands.Converters;
 
 namespace VRoles.Services;
-class RoleService
+public class RoleService
 {
+    // Lazy singleton: avoid constructing before Plugin/Harmony are ready
+    static RoleService _instance;
+    public static RoleService Instance => _instance ??= new RoleService();
+
+    // Indicates whether roles/config have been fully loaded and are ready for use
+    public static bool IsReady { get; private set; }
+
+    // Raised whenever the roles/config finish loading
+    public static event Action RolesLoaded;
 
     static readonly string CONFIG_PATH = Path.Combine(BepInEx.Paths.ConfigPath, MyPluginInfo.PLUGIN_NAME);
     static readonly string ROLES_PATH = Path.Combine(CONFIG_PATH, "Roles");
@@ -114,8 +123,20 @@ class RoleService
         LoadSettings();
     }
 
+    // Allow external callers to ensure roles are loaded before usage
+    public static void EnsureRolesLoaded()
+    {
+        if (!IsReady)
+        {
+            Instance.LoadSettings();
+        }
+    }
+
     void LoadSettings()
     {
+        // mark not ready while (re)loading
+        IsReady = false;
+
         // Clear existing data
         rolesToCommands.Clear();
         assignedRoles.Clear();
@@ -218,6 +239,10 @@ class RoleService
                 Console.WriteLine($"Error loading disallowed non-admin commands: {ex.Message}");
             }
         }
+
+        // mark as ready and notify listeners
+        IsReady = true;
+        RolesLoaded?.Invoke();
     }
 
     void SaveRoleAssignments()
@@ -416,77 +441,92 @@ class RoleService
     {
         inHelpCmd = false;
     }
+
+    static bool _hookedUp;
+
     static void HookUpForSeeingIfCheckingPermission()
     {
-        var executeCommandWithArgsMethod = AccessTools.Method(typeof(CommandRegistry), "ExecuteCommandWithArgs");
-        if (executeCommandWithArgsMethod == null)
+        if (_hookedUp) return;
+        // Prevent NRE if Harmony not yet initialized by Plugin.Load
+        if (Plugin.Harmony == null)
+            return;
+
+        try
         {
-            // PreCommand Overloading changes in VCF
-            executeCommandWithArgsMethod = AccessTools.Method(typeof(CommandRegistry), "Handle");
-            return;
-        }
+            var executeCommandWithArgsMethod = AccessTools.Method(typeof(CommandRegistry), "ExecuteCommandWithArgs")
+                ?? AccessTools.Method(typeof(CommandRegistry), "Handle");
 
-        var prefixExecute = new HarmonyMethod(typeof(RoleService), nameof(EnterExecuteCommandWithArgs));
-        var postfixExecute = new HarmonyMethod(typeof(RoleService), nameof(ExitExecuteCommandWithArgs));
-        Plugin.Harmony.Patch(executeCommandWithArgsMethod, prefix: prefixExecute, postfix: postfixExecute);
-
-        var prefixHelp = new HarmonyMethod(typeof(RoleService), nameof(EnterHelpCommand));
-        var postfixHelp = new HarmonyMethod(typeof(RoleService), nameof(ExitHelpCommand));
-
-        // Use reflection to get the internal static property AssemblyCommandMap
-        var assemblyCommandMapProp = typeof(CommandRegistry).GetProperty(
-            "AssemblyCommandMap",
-            BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
-
-        if (assemblyCommandMapProp == null)
-            return;
-
-        var assemblyCommandMap = assemblyCommandMapProp.GetValue(null) as System.Collections.IDictionary;
-        if (assemblyCommandMap == null)
-            return;
-
-        foreach (System.Collections.DictionaryEntry asmEntry in assemblyCommandMap)
-        {
-            // Only process the VampireCommandFramework assembly
-            if (asmEntry.Key is Assembly asm && asm.GetName().Name == "VampireCommandFramework")
+            var prefixExecute = new HarmonyMethod(typeof(RoleService), nameof(EnterExecuteCommandWithArgs));
+            var postfixExecute = new HarmonyMethod(typeof(RoleService), nameof(ExitExecuteCommandWithArgs));
+            if (executeCommandWithArgsMethod != null)
             {
-                var commandDict = asmEntry.Value as System.Collections.IDictionary;
-                if (commandDict == null)
-                    continue;
+                Plugin.Harmony.Patch(executeCommandWithArgsMethod, prefix: prefixExecute, postfix: postfixExecute);
+            }
 
-                foreach (System.Collections.DictionaryEntry cmdEntry in commandDict)
+            var prefixHelp = new HarmonyMethod(typeof(RoleService), nameof(EnterHelpCommand));
+            var postfixHelp = new HarmonyMethod(typeof(RoleService), nameof(ExitHelpCommand));
+
+            // Use reflection to get the internal static property AssemblyCommandMap
+            var assemblyCommandMapProp = typeof(CommandRegistry).GetProperty(
+                "AssemblyCommandMap",
+                BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+
+            if (assemblyCommandMapProp != null)
+            {
+                var assemblyCommandMap = assemblyCommandMapProp.GetValue(null) as System.Collections.IDictionary;
+                if (assemblyCommandMap != null)
                 {
-                    var metadata = cmdEntry.Key;
-                    var commandList = cmdEntry.Value as System.Collections.IEnumerable;
-                    if (commandList == null)
-                        continue;
-
-                    // Check if any command string is ".help" or ".help-all"
-                    bool isHelp = false;
-                    foreach (var cmd in commandList)
+                    foreach (System.Collections.DictionaryEntry asmEntry in assemblyCommandMap)
                     {
-                        if (cmd is string s && (s == ".help" || s == ".help-all"))
+                        // Only process the VampireCommandFramework assembly
+                        if (asmEntry.Key is Assembly asm && asm.GetName().Name == "VampireCommandFramework")
                         {
-                            isHelp = true;
-                            break;
+                            var commandDict = asmEntry.Value as System.Collections.IDictionary;
+                            if (commandDict == null)
+                                continue;
+
+                            foreach (System.Collections.DictionaryEntry cmdEntry in commandDict)
+                            {
+                                var metadata = cmdEntry.Key;
+                                var commandList = cmdEntry.Value as System.Collections.IEnumerable;
+                                if (commandList == null)
+                                    continue;
+
+                                // Check if any command string is ".help" or ".help-all"
+                                bool isHelp = false;
+                                foreach (var cmd in commandList)
+                                {
+                                    if (cmd is string s && (s == ".help" || s == ".help-all"))
+                                    {
+                                        isHelp = true;
+                                        break;
+                                    }
+                                }
+                                if (!isHelp)
+                                    continue;
+
+                                // Get the MethodInfo from the metadata (reflection, since it's an internal record)
+                                var methodProp = metadata.GetType().GetProperty("Method");
+                                if (methodProp == null)
+                                    continue;
+
+                                var methodInfo = methodProp.GetValue(metadata) as MethodInfo;
+                                if (methodInfo == null)
+                                    continue;
+
+                                // Patch the help command method
+                                Plugin.Harmony.Patch(methodInfo, prefix: prefixHelp, postfix: postfixHelp);
+                            }
                         }
                     }
-                    if (!isHelp)
-                        continue;
-
-                    // Get the MethodInfo from the metadata (reflection, since it's an internal record)
-                    var methodProp = metadata.GetType().GetProperty("Method");
-                    if (methodProp == null)
-                        continue;
-
-                    var methodInfo = methodProp.GetValue(metadata) as MethodInfo;
-                    if (methodInfo == null)
-                        continue;
-
-                    // Patch the help command method
-                    Plugin.Harmony.Patch(methodInfo, prefix: prefixHelp, postfix: postfixHelp);
                 }
             }
+
+            _hookedUp = true;
+        }
+        catch (Exception ex)
+        {
+            try { Core.Log.LogError($"Error while hooking permission checks: {ex}"); } catch { }
         }
     }
 }
