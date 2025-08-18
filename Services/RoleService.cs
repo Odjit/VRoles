@@ -4,13 +4,23 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
 using VampireCommandFramework;
 using VCF.Core.Basics;
 using VRoles.Commands.Converters;
 
 namespace VRoles.Services;
-class RoleService
+public class RoleService
 {
+    // Thread-safe lazy singleton to avoid early initialization and race conditions
+    static readonly Lazy<RoleService> _instance = new(() => new RoleService(), LazyThreadSafetyMode.ExecutionAndPublication);
+    public static RoleService Instance => _instance.Value;
+
+    // Indicates whether roles/config have been fully loaded and are ready for use
+    public static bool IsReady { get; private set; }
+
+    // Raised whenever the roles/config finish loading
+    public static event Action RolesLoaded;
 
     static readonly string CONFIG_PATH = Path.Combine(BepInEx.Paths.ConfigPath, MyPluginInfo.PLUGIN_NAME);
     static readonly string ROLES_PATH = Path.Combine(CONFIG_PATH, "Roles");
@@ -81,6 +91,9 @@ class RoleService
     HashSet<string> allowedAdminCommands = [];
     HashSet<string> disallowedNonadminCommands = [];
 
+    // Synchronization for loading settings
+    readonly object _loadLock = new();
+
     static string GetCommandName(CommandAttribute command, MethodInfo method)
     {
         var commandName = method.DeclaringType.Assembly.GetName().Name;
@@ -114,109 +127,135 @@ class RoleService
         LoadSettings();
     }
 
+    // Allow external callers to ensure roles are loaded before usage
+    public static void EnsureRolesLoaded()
+    {
+        var svc = Instance; // ensure instance exists
+        if (!IsReady)
+        {
+            lock (svc._loadLock)
+            {
+                if (!IsReady)
+                {
+                    svc.LoadSettings();
+                }
+            }
+        }
+    }
+
     void LoadSettings()
     {
-        // Clear existing data
-        rolesToCommands.Clear();
-        assignedRoles.Clear();
-
-        // Load roles and their commands
-        if (Directory.Exists(ROLES_PATH))
+        lock (_loadLock)
         {
-            foreach (var file in Directory.GetFiles(ROLES_PATH, "*.txt"))
-            {
-                var roleName = Path.GetFileNameWithoutExtension(file);
-                var commands = new HashSet<string>();
-                rolesToCommands[roleName] = commands;
+            // mark not ready while (re)loading
+            IsReady = false;
 
-                if (File.Exists(file))
+            // Clear existing data
+            rolesToCommands.Clear();
+            assignedRoles.Clear();
+
+            // Load roles and their commands
+            if (Directory.Exists(ROLES_PATH))
+            {
+                foreach (var file in Directory.GetFiles(ROLES_PATH, "*.txt"))
                 {
-                    try
+                    var roleName = Path.GetFileNameWithoutExtension(file);
+                    var commands = new HashSet<string>();
+                    rolesToCommands[roleName] = commands;
+
+                    if (File.Exists(file))
                     {
-                        var lines = File.ReadAllLines(file);
-                        foreach (var line in lines)
+                        try
                         {
-                            if (!string.IsNullOrWhiteSpace(line))
+                            var lines = File.ReadAllLines(file);
+                            foreach (var line in lines)
                             {
-                                commands.Add(line.Trim());
+                                if (!string.IsNullOrWhiteSpace(line))
+                                {
+                                    commands.Add(line.Trim());
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Error loading role file {file}: {ex.Message}");
+                        }
+                    }
+                }
+            }
+
+            // Load role assignments
+            if (File.Exists(ASSIGNED_ROLES_PATH))
+            {
+                try
+                {
+                    var lines = File.ReadAllLines(ASSIGNED_ROLES_PATH);
+                    foreach (var line in lines)
+                    {
+                        if (string.IsNullOrWhiteSpace(line)) continue;
+
+                        var parts = line.Split(':', 2);
+                        if (parts.Length != 2) continue;
+
+                        if (ulong.TryParse(parts[0], out var platformId))
+                        {
+                            var roles = parts[1].Split(',').Select(r => r.Trim()).Where(r => !string.IsNullOrWhiteSpace(r)).ToList();
+                            if (roles.Count > 0)
+                            {
+                                assignedRoles[platformId] = roles;
                             }
                         }
                     }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"Error loading role file {file}: {ex.Message}");
-                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error loading role assignments: {ex.Message}");
                 }
             }
-        }
 
-        // Load role assignments
-        if (File.Exists(ASSIGNED_ROLES_PATH))
-        {
-            try
+            // Load allowed admin commands
+            if (File.Exists(ALLOWED_ADMIN_COMMANDS_PATH))
             {
-                var lines = File.ReadAllLines(ASSIGNED_ROLES_PATH);
-                foreach (var line in lines)
+                try
                 {
-                    if (string.IsNullOrWhiteSpace(line)) continue;
-
-                    var parts = line.Split(':', 2);
-                    if (parts.Length != 2) continue;
-
-                    if (ulong.TryParse(parts[0], out var platformId))
+                    var lines = File.ReadAllLines(ALLOWED_ADMIN_COMMANDS_PATH);
+                    foreach (var line in lines)
                     {
-                        var roles = parts[1].Split(',').Select(r => r.Trim()).Where(r => !string.IsNullOrWhiteSpace(r)).ToList();
-                        if (roles.Count > 0)
+                        if (!string.IsNullOrWhiteSpace(line))
                         {
-                            assignedRoles[platformId] = roles;
+                            allowedAdminCommands.Add(line.Trim());
                         }
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error loading role assignments: {ex.Message}");
-            }
-        }
-
-        // Load allowed admin commands
-        if (File.Exists(ALLOWED_ADMIN_COMMANDS_PATH))
-        {
-            try
-            {
-                var lines = File.ReadAllLines(ALLOWED_ADMIN_COMMANDS_PATH);
-                foreach (var line in lines)
+                catch (Exception ex)
                 {
-                    if (!string.IsNullOrWhiteSpace(line))
-                    {
-                        allowedAdminCommands.Add(line.Trim());
-                    }
+                    Console.WriteLine($"Error loading allowed admin commands: {ex.Message}");
                 }
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error loading allowed admin commands: {ex.Message}");
-            }
-        }
 
-        // Load disallowed non-admin commands
-        if (File.Exists(DISALLOWED_NONADMIN_COMMANDS_PATH))
-        {
-            try
+            // Load disallowed non-admin commands
+            if (File.Exists(DISALLOWED_NONADMIN_COMMANDS_PATH))
             {
-                var lines = File.ReadAllLines(DISALLOWED_NONADMIN_COMMANDS_PATH);
-                foreach (var line in lines)
+                try
                 {
-                    if (!string.IsNullOrWhiteSpace(line))
+                    var lines = File.ReadAllLines(DISALLOWED_NONADMIN_COMMANDS_PATH);
+                    foreach (var line in lines)
                     {
-                        disallowedNonadminCommands.Add(line.Trim());
+                        if (!string.IsNullOrWhiteSpace(line))
+                        {
+                            disallowedNonadminCommands.Add(line.Trim());
+                        }
                     }
                 }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error loading disallowed non-admin commands: {ex.Message}");
+                }
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error loading disallowed non-admin commands: {ex.Message}");
-            }
+
+            // mark as ready and notify listeners
+            IsReady = true;
+            RolesLoaded?.Invoke();
         }
     }
 
@@ -416,75 +455,126 @@ class RoleService
     {
         inHelpCmd = false;
     }
+
+    static bool _hookedUp;
+    static readonly object _hookLock = new();
+
     static void HookUpForSeeingIfCheckingPermission()
     {
-        var executeCommandWithArgsMethod = AccessTools.Method(typeof(CommandRegistry), "ExecuteCommandWithArgs");
-        if (executeCommandWithArgsMethod == null)
+        lock (_hookLock)
         {
-            // PreCommand Overloading changes in VCF
-            executeCommandWithArgsMethod = AccessTools.Method(typeof(CommandRegistry), "Handle");
-            return;
-        }
+            if (_hookedUp) return;
+            // Prevent NRE if Harmony not yet initialized by Plugin.Load
+            if (Plugin.Harmony == null)
+                return;
 
-        var prefixExecute = new HarmonyMethod(typeof(RoleService), nameof(EnterExecuteCommandWithArgs));
-        var postfixExecute = new HarmonyMethod(typeof(RoleService), nameof(ExitExecuteCommandWithArgs));
-        Plugin.Harmony.Patch(executeCommandWithArgsMethod, prefix: prefixExecute, postfix: postfixExecute);
-
-        var prefixHelp = new HarmonyMethod(typeof(RoleService), nameof(EnterHelpCommand));
-        var postfixHelp = new HarmonyMethod(typeof(RoleService), nameof(ExitHelpCommand));
-
-        // Use reflection to get the internal static property AssemblyCommandMap
-        var assemblyCommandMapProp = typeof(CommandRegistry).GetProperty(
-            "AssemblyCommandMap",
-            BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
-
-        if (assemblyCommandMapProp == null)
-            return;
-
-        var assemblyCommandMap = assemblyCommandMapProp.GetValue(null) as System.Collections.IDictionary;
-        if (assemblyCommandMap == null)
-            return;
-
-        foreach (System.Collections.DictionaryEntry asmEntry in assemblyCommandMap)
-        {
-            // Only process the VampireCommandFramework assembly
-            if (asmEntry.Key is Assembly asm && asm.GetName().Name == "VampireCommandFramework")
+            try
             {
-                var commandDict = asmEntry.Value as System.Collections.IDictionary;
-                if (commandDict == null)
-                    continue;
-
-                foreach (System.Collections.DictionaryEntry cmdEntry in commandDict)
+                // Determine which CommandRegistry method to patch explicitly (no null-coalescing) for better debugging
+                MethodInfo executeCommandWithArgsMethod = AccessTools.Method(typeof(CommandRegistry), "ExecuteCommandWithArgs");
+                if (executeCommandWithArgsMethod != null)
                 {
-                    var metadata = cmdEntry.Key;
-                    var commandList = cmdEntry.Value as System.Collections.IEnumerable;
-                    if (commandList == null)
-                        continue;
-
-                    // Check if any command string is ".help" or ".help-all"
-                    bool isHelp = false;
-                    foreach (var cmd in commandList)
+                    try { Core.Log.LogInfo("VCF patch target resolved: CommandRegistry.ExecuteCommandWithArgs"); }
+                    catch (Exception logEx)
                     {
-                        if (cmd is string s && (s == ".help" || s == ".help-all"))
+                        Console.Error.WriteLine($"Failed to log info while selecting VCF patch target: {logEx}");
+                    }
+                }
+                else
+                {
+                    executeCommandWithArgsMethod = AccessTools.Method(typeof(CommandRegistry), "Handle");
+                    if (executeCommandWithArgsMethod != null)
+                    {
+                        try { Core.Log.LogInfo("VCF patch target resolved: CommandRegistry.Handle"); }
+                        catch (Exception logEx)
                         {
-                            isHelp = true;
-                            break;
+                            Console.Error.WriteLine($"Failed to log info while selecting VCF patch target: {logEx}");
                         }
                     }
-                    if (!isHelp)
-                        continue;
+                    else
+                    {
+                        try { Core.Log.LogWarning("VCF patch target not found: neither ExecuteCommandWithArgs nor Handle is available."); }
+                        catch (Exception logEx)
+                        {
+                            Console.Error.WriteLine($"Failed to log warning while selecting VCF patch target: {logEx}");
+                        }
+                    }
+                }
 
-                    // Get the MethodInfo from the metadata (reflection, since it's an internal record)
-                    var methodProp = metadata.GetType().GetProperty("Method");
-                    if (methodProp == null)
-                        continue;
+                var prefixExecute = new HarmonyMethod(typeof(RoleService), nameof(EnterExecuteCommandWithArgs));
+                var postfixExecute = new HarmonyMethod(typeof(RoleService), nameof(ExitExecuteCommandWithArgs));
+                if (executeCommandWithArgsMethod != null)
+                {
+                    Plugin.Harmony.Patch(executeCommandWithArgsMethod, prefix: prefixExecute, postfix: postfixExecute);
+                }
 
-                    var methodInfo = methodProp.GetValue(metadata) as MethodInfo;
-                    if (methodInfo == null)
-                        continue;
+                var prefixHelp = new HarmonyMethod(typeof(RoleService), nameof(EnterHelpCommand));
+                var postfixHelp = new HarmonyMethod(typeof(RoleService), nameof(ExitHelpCommand));
 
-                    // Patch the help command method
-                    Plugin.Harmony.Patch(methodInfo, prefix: prefixHelp, postfix: postfixHelp);
+                // Use reflection to get the internal static property AssemblyCommandMap
+                var assemblyCommandMapProp = typeof(CommandRegistry).GetProperty(
+                    "AssemblyCommandMap",
+                    BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+
+                if (assemblyCommandMapProp != null)
+                {
+                    var assemblyCommandMap = assemblyCommandMapProp.GetValue(null) as System.Collections.IDictionary;
+                    if (assemblyCommandMap != null)
+                    {
+                        foreach (System.Collections.DictionaryEntry asmEntry in assemblyCommandMap)
+                        {
+                            // Only process the VampireCommandFramework assembly
+                            if (asmEntry.Key is Assembly asm && asm.GetName().Name == "VampireCommandFramework")
+                            {
+                                var commandDict = asmEntry.Value as System.Collections.IDictionary;
+                                if (commandDict == null)
+                                    continue;
+
+                                foreach (System.Collections.DictionaryEntry cmdEntry in commandDict)
+                                {
+                                    var metadata = cmdEntry.Key;
+                                    var commandList = cmdEntry.Value as System.Collections.IEnumerable;
+                                    if (commandList == null)
+                                        continue;
+
+                                    // Check if any command string is ".help" or ".help-all"
+                                    bool isHelp = false;
+                                    foreach (var cmd in commandList)
+                                    {
+                                        if (cmd is string s && (s == ".help" || s == ".help-all"))
+                                        {
+                                            isHelp = true;
+                                            break;
+                                        }
+                                    }
+                                    if (!isHelp)
+                                        continue;
+
+                                    // Get the MethodInfo from the metadata (reflection, since it's an internal record)
+                                    var methodProp = metadata.GetType().GetProperty("Method");
+                                    if (methodProp == null)
+                                        continue;
+
+                                    var methodInfo = methodProp.GetValue(metadata) as MethodInfo;
+                                    if (methodInfo == null)
+                                        continue;
+
+                                    // Patch the help command method
+                                    Plugin.Harmony.Patch(methodInfo, prefix: prefixHelp, postfix: postfixHelp);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                _hookedUp = true;
+            }
+            catch (Exception ex)
+            {
+                try { Core.Log.LogError($"Error while hooking permission checks: {ex}"); }
+                catch (Exception logEx)
+                {
+                    Console.Error.WriteLine($"Failed to log error while hooking permission checks: {logEx} (original error: {ex})");
                 }
             }
         }

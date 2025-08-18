@@ -3,6 +3,7 @@ using BepInEx.Logging;
 using BepInEx.Unity.IL2CPP;
 using HarmonyLib;
 using VampireCommandFramework;
+using VRoles.Services;
 
 namespace VRoles;
 
@@ -29,6 +30,10 @@ public class Plugin : BasePlugin
 
         // Register all commands in the assembly with VCF
         CommandRegistry.RegisterAll();
+
+        // Ensure RoleService is created after Harmony is available and commands are registered
+        var _ = RoleService.Instance;
+        RoleService.EnsureRolesLoaded();
     }
 
     public override bool Unload()
