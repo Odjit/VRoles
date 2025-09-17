@@ -21,7 +21,6 @@ internal class FoundCommandConverter : CommandArgumentConverter<FoundCommand>
         return new FoundCommand(cmd, adminOnly);
     }
 
-
     static (string, bool) FindCommandByName(string commandName)
     {
         // Parse the input - handle both formats: "CommandName" and "Group.CommandName" and "Assembly.Group.CommandName"
@@ -75,12 +74,28 @@ internal class FoundCommandConverter : CommandArgumentConverter<FoundCommand>
             var kvpType = entry.GetType();
 
             // Get the KeyValuePair properties
-            var keyProperty = kvpType.GetProperty("Key");    // Assembly
+            var keyProperty = kvpType.GetProperty("Key");    // Assembly or string
             var valueProperty = kvpType.GetProperty("Value"); // Dictionary<CommandMetadata, List<string>>
 
-            var assembly = (Assembly)keyProperty.GetValue(entry);
-            var assemblyName = assembly.GetName().Name;
+            var key = keyProperty.GetValue(entry);
             var commandDict = valueProperty.GetValue(entry);
+
+            // Handle both Assembly objects (old format) and string assembly names (new format)
+            string assemblyName;
+            if (key is Assembly assembly)
+            {
+                // Old format: Assembly object
+                assemblyName = assembly.GetName().Name;
+            }
+            else if (key is string assemblyNameString)
+            {
+                // New format: string assembly name
+                assemblyName = assemblyNameString;
+            }
+            else
+            {
+                continue; // Unknown format, skip
+            }
 
             // Check if assembly name matches if specified
             if (inputAssembly != null &&
@@ -149,7 +164,7 @@ internal class FoundCommandConverter : CommandArgumentConverter<FoundCommand>
                 if ((inputGroup == null || assemblyName.Equals(inputGroup, StringComparison.InvariantCultureIgnoreCase)) && groupName == null)
                 {
                     if (inputCommand.Equals(extractedCommandName, StringComparison.InvariantCultureIgnoreCase) ||
-                        (commandShortHand != null && inputCommand.Equals(commandShortHand, StringComparison.InvariantCulture    )))
+                        (commandShortHand != null && inputCommand.Equals(commandShortHand, StringComparison.InvariantCultureIgnoreCase)))
                     {
                         matches = true;
                     }
